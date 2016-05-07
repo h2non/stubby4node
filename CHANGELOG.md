@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.3.0
+
+* __BREAKING CHANGES from 0.2.x__
+  * In `0.2.x` and below, you could pass `request.headers.authorization` as a `username:password` string to signify Basic auth and stubby would automatically prefix `Basic ` and base64-encode the user/pass string. This breaks other forms of web auth that uses the `Authorization` header.
+  ```yaml
+  # Before
+  request:
+    headers:
+      authorization: 'username:password'
+  # Now
+  request:
+    headers:
+      authorization: 'Basic username:password'
+  ```
+  Stubby will still base64-encode the `username:password` if it sees that `Basic ` is specified and the `:` character is present. Otherwise it will take it as-is.
+* __New features__
+  * `json:` option for endpoints -- instead of using `post:` or `file:` for matching the body of incoming requests, you can specify `json: ` with a JSON string and its content will be deeply matched for incoming request bodies.
+
+## 0.2.13
+
+* fixes a crash when using `start()` without any options
+
+## 0.2.12
+
+* fixes array representations in query strings
+
+## 0.2.11
+
+* fixes several scope-binding issues caused by the JavaScript rewrite (sorry!)
+* clarify use of `PUT` and the admin portal
+* added `_httpsOptions` to pass through options to the underlying tls server.
+
+## 0.2.10
+
+* fix colorsafe console wrapper errors (Esco Obong)
+
+## 0.2.9
+
+* Rewrote library in JavaScript (was CoffeeScript)
+
+## 0.2.8
+
+* fixes the status page display (Hadi Michael)
+
+## 0.2.7
+
+* fixes unhelpful output when the location given cannot be bound to
+
+## 0.2.6
+
+* fixes an issue where identical URLs with different request methods may throw
+  an exception
+
+## 0.2.5
+
+* token replacement from regex capture groups is now usable for dynamic `file:`
+  usage
+
 ## 0.2.3
 
 * added recording feature. If a `response` object uses a string in place of an object (or a sequence of objects/string) the strings will be interpreted as a url to record the response from. Details configured in the `request` object (such as `method`, `headers`, etc) will be used to make the recording request to the specified url
@@ -153,7 +211,7 @@
 
 ## 0.1.23beta
 
-* fixed but with endpoints with undefined headers not being accepted 
+* fixed but with endpoints with undefined headers not being accepted
 
 ## 0.1.22beta
 

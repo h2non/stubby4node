@@ -4,6 +4,10 @@
 stubby4node
 ===========
 
+A configurable server for mocking/stubbing external systems during development.
+
+`stubby` takes endpoint descriptors in the form of a YAML or JSON file that tell it how to respond to incoming requests. For each incoming request, configured endpoints are checked in-order until a match is found.
+
 ## Table of Contents
 
 * [Installation](#installation)
@@ -11,15 +15,12 @@ stubby4node
 * [Starting the Server(s)](#starting-the-servers)
 * [Command-line Switches](#command-line-switches)
 * [Endpoint Configuration](#endpoint-configuration)
-* [Dynamic Token Replacement](#dynamic-token-replacement)
+* [Dynamic Token Interpolation](#dynamic-token-interpolation)
 * [The Admin Portal](#the-admin-portal)
 * [The Stubs Portal](#the-stubs-portal)
 * [Programmatic API](#programmatic-api)
-* [Running Tests](#running-tests)
-* [Grunt task](#grunt-task)
 * [See Also](#see-also)
 * [TODO](#todo)
-* [Wishful Thinkings](#wishful-thinkings)
 * [NOTES](#notes)
 
 ## Installation
@@ -32,28 +33,20 @@ This will install `stubby` as a command in your `PATH`. Leave off the `-g` flag 
 
 ### via source
 
-You need to have `coffee-script` installed on your system.
-
-    git clone git://github.com/Afmrak/stubby4node.git
+    git clone https://github.com/mrak/stubby4node.git
     cd stubby4node
-    coffee -o lib -c src
-    export PATH=$PATH:<pwd>/bin/stubby
+    npm start -- <stubby args>
 
 ## Requirements
 
-* [node.js](http://nodejs.org/) (>=0.8.x)
+* [node.js](http://nodejs.org/)
+  * iojs
+  * 0.10.x
+  * 0.12.x
+  * node LTS
+  * node latest
 
-Development is on Mac OS X Mountain Lion.
-
-### Packaged
-
-* [JS-YAML](https://github.com/nodeca/js-yaml) for loading yaml files
-* [cloneextend](https://github.com/shimondoodkin/nodejs-clone-extend)
-
-### Optional (for development)
-
-* [grunt-cli](http://gruntjs.com)
-* [node-inspector](https://github.com/dannycoates/node-inspector)
+Development is on x86-64 Linux.
 
 ## Starting the Server(s)
 
@@ -80,6 +73,8 @@ stubby [-a <port>] [-c <file>] [-d <file>] [-h] [-k <file>] [-l <hostname>] [-m]
 -v, --version               Prints stubby's version number.
 -w, --watch                 Auto-reload data file when edits are made.
 ```
+
+When used from the command-line, `stubby` responds to the `SIGHUP` signal to reload its configuration.
 
 ## Endpoint Configuration
 
@@ -125,7 +120,7 @@ This object is used to match an incoming request to stubby against the available
 * is a full-fledged __regular expression__
 * This is the only required property of an endpoint.
 * signify the url after the base host and port (i.e. after `localhost:8882`).
-* any query paramters are stripped (so don't include them, that's what `query` is for).
+* any query parameters are stripped (so don't include them, that's what `query` is for).
     * `/url?some=value&another=value` becomes `/url`
 * no checking is done for URI-encoding compliance.
     * If it's invalid, it won't ever trigger a match.
@@ -175,17 +170,17 @@ A demonstration using regular expressions:
       method: [GET, HEAD]
 
 -  request:
-      url: ^/yonder
-      method:
-         -  GET
-         -  HEAD
-         -  POST
+     url: ^/yonder
+     method:
+       -  GET
+       -  HEAD
+       -  POST
 ```
 
 #### query
 
 * values are full-fledged __regular expressions__
-* if ommitted, stubby ignores query parameters for the given url.
+* if omitted, stubby ignores query parameters for the given url.
 * a yaml hashmap of variable/value pairs.
 * allows the query parameters to appear in any order in a uri
 
@@ -195,16 +190,32 @@ A demonstration using regular expressions:
 
 ```yaml
 -  request:
-      url: ^/with/parameters$
-      query:
-         search: search terms
-         filter: month
+     url: ^/with/parameters$
+     query:
+       search: search terms
+       filter: month
+```
+
+__NOTE__: repeated querystring keys (often array representations) will have
+their values converted to a comma-separated list.
+
+```
+/url?array=one&array=two
+```
+
+will be matched by:
+
+```yaml
+- request:
+    url: ^/url$
+    query:
+      array: one,two
 ```
 
 #### post
 
 * is a full-fledged __regular expression__
-* if ommitted, any post data is ignored.
+* if omitted, any post data is ignored.
 * the body contents of the server request, such as form data.
 
 ```yaml
@@ -234,10 +245,28 @@ postedData.json
 
 * if `postedData.json` doesn't exist on the filesystem when `/match/against/file` is requested, stubby will match post contents against `{"fallback":"data"}` (from `post`) instead.
 
+#### json
+
+* not used if `post` or `file` are present.
+* will be parsed into a JavaScript object.
+* allows you to specify a JSON string that will be deeply compared with a JSON request
+
+Although not required, it is recommended to also specify a `application/json` header requirement.
+
+```yaml
+-  request:
+      url: ^/match/against/jsonString$
+      headers:
+         content-type: application/json
+      json: '{"key1":"value1","key2":"value2"}'
+```
+
+JSON strings may contain `"key": "value"` pairs in any order: `{"key1":"value1, "key2":"value2"}` is equivalent to `{"key2":"value2, "key1":"value1"}`
+
 #### headers
 
 * values are full-fledged __regular expressions__
-* if ommitted, stubby ignores headers for the given url.
+* if omitted, stubby ignores headers for the given url.
 * case-insensitive matching of header names.
 * a hashmap of header/value pairs similar to `query`.
 
@@ -256,6 +285,7 @@ The following endpoint only accepts requests with `application/json` post values
 Assuming a match has been made against the given `request` object, data from `response` is used to build the stubbed response back to the client.
 
 __ALSO:__ The `response` property can also be a yaml sequence of responses that cycle as each request is made.
+
 __ALSO:__ The `response` property can also be a url (string) or sequence of object/urls. The url will be used to record a response object to be used in calls to stubby. When used this way, data from the `request` portion of the endpoint will be used to assemble a request to the url given as the `response`.
 
 ```yaml
@@ -346,7 +376,7 @@ __ALSO:__ The `response` property can also be a url (string) or sequence of obje
       body: Hello, World!
 ```
 
-## Dynamic Token Replacement
+## Dynamic Token Interpolation
 
 While `stubby` is matching request data against configured endpoints, it is keeping a hash of all regular expression capture groups along the way.
 These capture groups can be referenced in `response` data. Here's an example
@@ -365,51 +395,66 @@ These capture groups can be referenced in `response` data. Here's an example
       body: Returned invoice number# <% url[1] %> in category '<% url[2] %>' on the date '<% query.date[1] %>', using header custom-header <% headers.custom-header[0] %>
 ```
 
-###Example explained
+The `url` regex `^/account/(\d{5})/category/([a-zA-Z]+)` has two defined capturing groups: `(\d{5})` and `([a-zA-Z]+)`. The `query` regex has one defined capturing group: `([a-zA-Z]+)`.
 
-The url regex `^/account/(\d{5})/category/([a-zA-Z]+)` has two defined capturing groups: `(\d{5})` and `([a-zA-Z]+)`, query regex has one defined capturing group `([a-zA-Z]+)`. In other words, a manually defined capturing group has parenthesis around it.
+Although the `headers` do not have capturing groups defined explicitly (no regex sections within parenthesis), the individual headers' fully-matched value is still accessible in a template (see [Capture group IDs](#capture-group-ids)).
 
-Although, the headers regex does not have capturing groups defined explicitly (no regex sections within parenthesis), its matched value is still accessible in a template (keep on reading!).
+### Templating `body` and `file`
 
-###Token structure
+The `response.body` can have token interpolations following the format of `< %PROPERTY_NAME[CAPTURING_GROUP_ID] %>`. If it is a token that corresponds to `headers` or `query` member matches, then the token structure would be `<% HEADERS_OR_QUERY.[KEY_NAME][CAPTURING_GROUP_ID] %>.
 
-The tokens in response body follow the format of `< %PROPERTY_NAME[CAPTURING_GROUP_ID] %>`. If it is a token that should correspond to headers or query regex match, then the token structure would be as follows: `<% HEADERS_OR_QUERY.[KEY_NAME][CAPTURING_GROUP_ID] %>.
+```yaml
+  response:
+    body: The "content-type" header value was <% headers.content-type[0] %>.
+```
 
-###Numbering the tokens based on capturing groups without sub-groups
+__NOTE:__ If you are using the `file` property for your responses, keep in mind that the
+file _contents_ are interpolated, not the file _name_. In other words, the `<% ... %>` will appear in the files' contents and not on the line in your configuration that has `response.file`
 
-When giving tokens their ID based on the count of manually defined capturing groups within regex, you should start from `1`, not zero (zero reserved for token that holds __full__ regex match) from left to right. So the leftmost capturing group would be `1` and the next one to the right of it would be `2`, etc.
+### Capture group IDs
 
-In other words `<% url[1] %>` and `<% url[2] %>` tokens correspond to two capturing groups from the url regex `(\d{5})` and `([a-zA-Z]+)`, while `<% query.date[1] %>` token corresponds to one capturing group `([a-zA-Z]+)` from the `query` `date` property regex.
+The `CAPTURING_GROUP_ID` is determined by the regular expression used. The index
+of `0` will be the full-text that matches the regular expression.
 
-###Numbering the tokens based on capturing groups with sub-groups
+Capture groups start at index `1` and correspond to the usage of parentheses.
 
-In regex world, capturing groups can contain capturing sub-groups, as an example consider proposed `url` regex: `^/resource/(([a-z]{3})-([0-9]{3}))$`. In the latter example, the regex has three groups - a parent group `([a-z]{3}-[0-9]{3})` and two sub-groups within: `([a-z]{3})` & `([0-9]{3})`.
+Let's demonstrate with the example from above:
 
-When giving tokens their ID based on the count of capturing groups, you should start from 1, not zero (zero reserved for token that holds __full__ regex match) from left to right. If a group has sub-group within, you count the sub-group(s) first (also from left to right) before counting the next one to the right of the parent group.
+```
+- request:
+    url: ^/account/(\d{5})/category/([a-zA-Z]+)
+```
 
-In other words tokens `<% url[1] %>`, `<% url[2] %>` and `<% url[3] %>` correspond to the three capturing groups from the url regex (starting from left to right): `([a-z]{3}-[0-9]{3})`, `([a-z]{3})` and `([0-9]{3})`.
+If the incoming `url` is `/account/54/category/users`, the following would be
+the capture groups:
 
-###Tokens with ID zero
+```
+<% url[0] %> -> /account/54/categroy/users
+<% url[1] %> -> 54
+<% url[2] %> -> users
+```
 
-Tokens with ID zero can obtain `full` match value from the regex they reference. In other words, tokens with ID zero do not care whether regex has capturing groups defined or not. For example, token `<% url[0] %>` will be replaced with the `ur`l __full__ regex match from `^/account/(\d{5})/category/([a-zA-Z]+)`. So if you want to access the `url` __full__ regex match, respectively you would use token `<% url[0] %>` in your template.
+Let's take a more complicated example with sub-groups as captures:
 
-Another example, would be the earlier case where `headers` `custom-header` property regex does not have capturing groups defined within. Which is fine, since the `<% headers.custom-header[0] %>` token corresponds to the __full__ regex match in the `header` `custom-header` property regex: `[0-9]+`.
+```yaml
+- request:
+    url: ^/resource/(([a-z]{3})-([0-9]{3}))$
+```
 
-It is also worth to mention, that the __full__ regex match value replacing token `<% query.date[0] %>`, would be equal to the regex capturing group value replacing `<% query.date[1] %>`. This is due to how the `query` `date` property regex is defined - the one and only capturing group in the query date regex, is also the __full__ regex itself.
+If the incoming `url` is `/resource/abc-123`, the capture groups would be:
 
-###Where to specify the template
-
-You can specify template with tokens in both `body` as a string or using `file` by specifying template as external local file. When template is specified as `file`, the contents of local file from `file` will be replaced, __not__ the path to local file defined in `file`.
-
-###When token interpolation happens
-
-After successful HTTP request verification, if your body or contents of local file from file contain tokens - the tokens will be replaced just before rendering HTTP response.
+```
+<% url[0] %> -> /resource/abc-123
+<% url[1] %> -> abc-123
+<% url[2] %> -> abc
+<% url[3] %> -> 123
+```
 
 ### Troubleshooting
 
-* Make sure that the regex you used in your stubby configuration actually does what it suppose to do. Validate that it works before using it in stubby
-* Make sure that the regex has capturing groups for the parts of regex you want to capture as token values. In other words, make sure that you did not forget the parenthesis within your regex if your token IDs start from `1`
-* Make sure that you are using token ID zero, when wanting to use __full__ regex match as the token value
+* Make sure that the regex you used in your stubby configuration actually does what it supposed to do. Validate that it works via the node REPL (or similar) before using it in stubby
+* Make sure that the regex has capturing groups for the parts of regex you want to capture as token values. In other words, make sure that you did not forget the parentheses within your regex if your token IDs start from `1`
+* Make sure that you are using token ID zero when wanting to use __full__ regex match as the token value
 * Make sure that the token names you used in your template are correct: check that property name is correct, capturing group IDs, token ID of the __full__ match, the `<%` and `%>`
 
 ## The Admin Portal
@@ -418,7 +463,7 @@ The admin portal is a RESTful(ish) endpoint running on `localhost:8889`. Or wher
 
 ### Supplying Endpoints to Stubby
 
-Submit `POST` requests to `localhost:8889` or load a data-file (-d) with the following structure for each endpoint:
+Submit `POST` requests to `localhost:8889`, `PUT` requests to `localhost:8889/:id`[\*](#getting-the-id-of-a-loaded-endpoint), or load a data-file (-d) with the following structure for each endpoint:
 
 * `request`: describes the client's call to the server
    * `method`: GET/POST/PUT/DELETE/etc.
@@ -434,7 +479,7 @@ Submit `POST` requests to `localhost:8889` or load a data-file (-d) with the fol
    * `body`: the textual body of the server's response to the client
    * `status`: the numerical HTTP status code (200 for OK, 404 for NOT FOUND, etc.)
 
-#### YAML (file only)
+#### YAML
 ```yaml
 -  request:
       url: ^/path/to/something$
@@ -477,30 +522,30 @@ Submit `POST` requests to `localhost:8889` or load a data-file (-d) with the fol
       status: 304
 ```
 
-#### JSON (file or POST/PUT)
+#### JSON
 ```json
 [
   {
     "request": {
-      "url": "^/path/to/something$", 
-      "post": "this is some post data in textual format", 
+      "url": "^/path/to/something$",
+      "post": "this is some post data in textual format",
       "headers": {
          "authorization": "Basic usernamez:passwordinBase64"
       },
       "method": "POST"
-    }, 
+    },
     "response": {
-      "status": 200, 
+      "status": 200,
       "headers": {
         "Content-Type": "application/json"
       },
       "latency": 1000,
       "body": "You're request was successfully processed!"
     }
-  }, 
+  },
   {
     "request": {
-      "url": "^/path/to/anotherThing", 
+      "url": "^/path/to/anotherThing",
       "query": {
          "a": "anything",
          "b": "more"
@@ -508,32 +553,32 @@ Submit `POST` requests to `localhost:8889` or load a data-file (-d) with the fol
       "headers": {
         "Content-Type": "application/json"
       },
-      "post": null, 
+      "post": null,
       "method": "GET"
-    }, 
+    },
     "response": {
-      "status": 204, 
+      "status": 204,
       "headers": {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*"
-      }, 
+      },
       "file": "path/to/page.html"
     }
-  }, 
+  },
   {
     "request": {
-      "url": "^/path/to/thing$", 
+      "url": "^/path/to/thing$",
       "headers": {
         "Content-Type": "application/json"
       },
-      "post": "this is some post data in textual format", 
+      "post": "this is some post data in textual format",
       "method": "POST"
-    }, 
+    },
     "response": {
-      "status": 304, 
+      "status": 304,
       "headers": {
         "Content-Type": "application/json"
-      } 
+      }
     }
   }
 ]
@@ -630,6 +675,8 @@ What can I do with it, you ask? Read on!
    * `pfx`: pfx file contents (mutually exclusive with key/cert options)
    * `watch`: filename to monitor and load as stubby's data when changes occur
    * `mute`: defaults to `true`. Pass in `false` to have console output (if available)
+   * `_httpsOptions`: additional options to pass to the [underlying tls
+     server](http://nodejs.org/api/tls.html#tls_tls_createserver_options_secureconnectionlistener).
 * `callback`: takes one parameter: the error message (if there is one), undefined otherwise
 
 #### start([callback])
@@ -641,13 +688,13 @@ closes the connections and ports being used by stubby's stubs and admin portals.
 #### get(id, callback)
 Simulates a GET request to the admin portal, with the callback receiving the resultant data.
 
-* `id`: the id of the endpoint to retrieve. If ommitted, an array of all registered endpoints is passed the callback.
+* `id`: the id of the endpoint to retrieve. If omitted, an array of all registered endpoints is passed the callback.
 * `callback(err, endpoint)`: `err` is defined if no endpoint exists with the given id. Else, `endpoint` is populated.
 
 #### get(callback)
 Simulates a GET request to the admin portal, with the callback receiving the resultant data.
 
-* `id`: the id of the endpoint to retrieve. If ommitted, an array of all registered endpoints is passed the callback.
+* `id`: the id of the endpoint to retrieve. If omitted, an array of all registered endpoints is passed the callback.
 * `callback(endpoints)`: takes a single parameter containing an array of returned results. Empty if no endpoints are registered
 
 #### post(data, [callback])
@@ -660,62 +707,56 @@ Simulates a GET request to the admin portal, with the callback receiving the res
 * `callback(err)`: executed with no passed parameters if successful. Else, passed the error message.
 
 #### delete([id], callback)
-* `id`: id of the endpoint to destroy. If ommitted, all endoints are cleared from stubby.
+* `id`: id of the endpoint to destroy. If omitted, all endoints are cleared from stubby.
 * `callback()`: called after the endpoint has been removed
 
-#### Example (coffeescript)
-```coffeescript
-Stubby = require('stubby').Stubby
+#### Example
+```javascript
+var Stubby = require('stubby').Stubby;
 
-stubby1 = new Stubby()
-stubby2 = new Stubby()
+var stubby1 = new Stubby();
+var stubby2 = new Stubby();
 
-stubby1.start
-   stubs: 80
-   admin: 81
-   location: 'localhost'
-   data: [
-      request:
-         url: "/anywhere"
-   ,
-      request:
-         url: "/but/here"
-   ]
+stubby1.start({
+  stubs: 80,
+  admin: 81,
+  location: 'localhost',
+  data: [{
+    request: { url: "/anywhere" }
+  },{
+    request: { url: "/but/here" }
+  }]
+});
 
-stubby2.start
-   stubs: 82
-   admin: 83
-   location: '127.0.0.2'
+stubby2.start({
+  stubs: 82,
+  admin: 83,
+  location: '127.0.0.2'
+});
 ```
-
-## Running Tests
-
-If you don't have `grunt-cli` already, install it:
-
-    npm install -g grunt-cli
-    npm install
-
-From the root directory run:
-
-    grunt test
 
 ## See Also
 
 * **[stubby4j](https://github.com/azagniotov/stubby4j):** A java implementation of stubby
 * **[stubby4net](https://github.com/mrak/stubby4net):** A .NET implementation of stubby
-
-## Grunt task
-
-For [Grunt](http://gruntjs.com) automation, see the [stubby task](https://github.com/h2non/grunt-stubby)
+* **[grunt-stubby](https://github.com/h2non/grunt-stubby):** grunt integration with stubby
+* **[gulp-stubby-server](https://github.com/felixzapata/gulp-stubby-server):** gulp integration with stubby
 
 ## TODO
 
+Non-breaking changes
+
 * `post` parameter as a hashmap under `request` for easy form-submission value matching
-* regex capture groups and dynamic token replacement
-* record & replay
+* Allow multi-value fields (arrays and maps) as query/post params
+
+Breaking changes
+
+* Intepret configuration values beginning and ending with `/` as regular
+  expressions, otherwise consider as exact string matches
+  * if `/` surrounded values do not compile as regex, log error to
+    console/response when adding
 
 ## NOTES
 
-* __Copyright__ 2013 Eric Mrak, Alexander Zagniotov
+* __Copyright__ 2015 Eric Mrak, Alexander Zagniotov
 * __License__ Apache v2.0
-
